@@ -1,94 +1,141 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { supabase } from '@/integrations/supabase/client';
+import { User, Session } from '@supabase/supabase-js';
 
 export type UserRole = 'admin' | 'user';
 
-export interface User {
+export interface Profile {
   id: string;
   name: string;
   email: string;
-  role: UserRole;
-  avatar?: string;
-  joinDate: string;
+  avatar: string | null;
+  created_at: string;
 }
 
 interface AuthState {
   user: User | null;
+  session: Session | null;
+  profile: Profile | null;
+  role: UserRole | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string, role: UserRole) => Promise<boolean>;
-  register: (name: string, email: string, password: string, role: UserRole) => Promise<boolean>;
-  logout: () => void;
+  isLoading: boolean;
+  initialize: () => Promise<(() => void) | void>;
+  login: (email: string, password: string) => Promise<{ error: string | null }>;
+  register: (name: string, email: string, password: string) => Promise<{ error: string | null }>;
+  logout: () => Promise<void>;
+  fetchProfile: (userId: string) => Promise<void>;
+  fetchRole: (userId: string) => Promise<void>;
 }
 
-// Mock users for demo
-const mockUsers: User[] = [
-  {
-    id: '1',
-    name: 'Admin User',
-    email: 'admin@bizness.com',
-    role: 'admin',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
-    joinDate: '2024-01-15',
-  },
-  {
-    id: '2',
-    name: 'Sarah Johnson',
-    email: 'sarah@bizness.com',
-    role: 'user',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=sarah',
-    joinDate: '2024-03-20',
-  },
-];
+export const useAuthStore = create<AuthState>()((set, get) => ({
+  user: null,
+  session: null,
+  profile: null,
+  role: null,
+  isAuthenticated: false,
+  isLoading: true,
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      isAuthenticated: false,
-      login: async (email: string, _password: string, role: UserRole) => {
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 800));
+  initialize: async () => {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        set({ session, user: session?.user ?? null, isAuthenticated: !!session });
         
-        const existingUser = mockUsers.find(u => u.email === email);
-        if (existingUser) {
-          set({ user: existingUser, isAuthenticated: true });
-          return true;
+        // Defer profile/role fetching with setTimeout to avoid deadlock
+        if (session?.user) {
+          setTimeout(() => {
+            get().fetchProfile(session.user.id);
+            get().fetchRole(session.user.id);
+          }, 0);
+        } else {
+          set({ profile: null, role: null });
         }
-        
-        // Create new user for demo
-        const newUser: User = {
-          id: Date.now().toString(),
-          name: email.split('@')[0],
-          email,
-          role,
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
-          joinDate: new Date().toISOString().split('T')[0],
-        };
-        
-        set({ user: newUser, isAuthenticated: true });
-        return true;
-      },
-      register: async (name: string, email: string, _password: string, role: UserRole) => {
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        
-        const newUser: User = {
-          id: Date.now().toString(),
-          name,
-          email,
-          role,
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
-          joinDate: new Date().toISOString().split('T')[0],
-        };
-        
-        set({ user: newUser, isAuthenticated: true });
-        return true;
-      },
-      logout: () => {
-        set({ user: null, isAuthenticated: false });
-      },
-    }),
-    {
-      name: 'bizness-auth',
+      }
+    );
+
+    // THEN check for existing session
+    const { data: { session } } = await supabase.auth.getSession();
+    set({ 
+      session, 
+      user: session?.user ?? null, 
+      isAuthenticated: !!session,
+      isLoading: false 
+    });
+
+    if (session?.user) {
+      await get().fetchProfile(session.user.id);
+      await get().fetchRole(session.user.id);
     }
-  )
-);
+
+    return () => subscription.unsubscribe();
+  },
+
+  fetchProfile: async (userId: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+    
+    if (!error && data) {
+      set({ profile: data as Profile });
+    }
+  },
+
+  fetchRole: async (userId: string) => {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
+    if (!error && data) {
+      set({ role: data.role as UserRole });
+    }
+  },
+
+  login: async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    return { error: null };
+  },
+
+  register: async (name: string, email: string, password: string) => {
+    const redirectUrl = `${window.location.origin}/`;
+    
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: redirectUrl,
+        data: {
+          name,
+        },
+      },
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    return { error: null };
+  },
+
+  logout: async () => {
+    await supabase.auth.signOut();
+    set({ 
+      user: null, 
+      session: null, 
+      profile: null, 
+      role: null, 
+      isAuthenticated: false 
+    });
+  },
+}));

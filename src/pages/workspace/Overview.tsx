@@ -11,17 +11,20 @@ const Overview = () => {
 
   if (!currentBusiness) return null;
 
-  const totalRevenue = currentBusiness.transactions
-    .filter((t) => t.type === 'sale')
-    .reduce((sum, t) => sum + t.amount, 0);
+  const transactions = currentBusiness.transactions || [];
+  const products = currentBusiness.products || [];
 
-  const totalExpenses = currentBusiness.transactions
+  const totalRevenue = transactions
+    .filter((t) => t.type === 'sale')
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const totalExpenses = transactions
     .filter((t) => t.type !== 'sale')
-    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
 
   const grossProfit = totalRevenue - totalExpenses;
 
-  const lowStockItems = currentBusiness.products.filter((p) => p.stock < 10);
+  const lowStockItems = products.filter((p) => p.stock < 10);
 
   // Generate chart data from transactions
   const chartData = [
@@ -33,7 +36,7 @@ const Overview = () => {
 
   // Category distribution for pie chart
   const categoryMap = new Map<string, number>();
-  currentBusiness.products.forEach((p) => {
+  products.forEach((p) => {
     const current = categoryMap.get(p.category) || 0;
     categoryMap.set(p.category, current + 1);
   });
@@ -69,7 +72,7 @@ const Overview = () => {
     },
     {
       title: 'Total Products',
-      value: currentBusiness.products.length,
+      value: products.length,
       change: 'Active items',
       trend: 'up',
       icon: Package,
@@ -223,7 +226,7 @@ const Overview = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {currentBusiness.transactions.slice(0, 5).map((transaction) => (
+              {transactions.slice(0, 5).map((transaction) => (
                 <div key={transaction.id} className="flex items-center gap-4 p-3 rounded-lg bg-secondary/50">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                     transaction.type === 'sale' ? 'bg-success/10' : 'bg-destructive/10'

@@ -33,7 +33,7 @@ const mockUsers = [
 
 const Admin = () => {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { profile, logout } = useAuthStore();
   const { businesses } = useBusinessStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState(mockUsers);
@@ -84,11 +84,11 @@ const Admin = () => {
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-3">
               <img
-                src={user?.avatar}
-                alt={user?.name}
+                src={profile?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin'}
+                alt={profile?.name || 'Admin'}
                 className="w-8 h-8 rounded-full"
               />
-              <span className="text-sm font-medium">{user?.name}</span>
+              <span className="text-sm font-medium">{profile?.name || 'Admin'}</span>
             </div>
             <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="w-4 h-4" />

@@ -42,14 +42,17 @@ const Reports = () => {
     });
   };
 
-  const totalRevenue = currentBusiness.transactions
+  const transactions = currentBusiness.transactions || [];
+  const products = currentBusiness.products || [];
+
+  const totalRevenue = transactions
     .filter((t) => t.type === 'sale')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + Number(t.amount), 0);
 
   const totalExpenses = Math.abs(
-    currentBusiness.transactions
+    transactions
       .filter((t) => t.type !== 'sale')
-      .reduce((sum, t) => sum + t.amount, 0)
+      .reduce((sum, t) => sum + Number(t.amount), 0)
   );
 
   const netProfit = totalRevenue - totalExpenses;
@@ -86,9 +89,9 @@ const Reports = () => {
     {
       title: 'Inventory Value',
       value: `Rp ${(
-        currentBusiness.products.reduce((sum, p) => sum + p.hpp * p.stock, 0) / 1000000
+        products.reduce((sum, p) => sum + Number(p.hpp) * p.stock, 0) / 1000000
       ).toFixed(1)}M`,
-      change: `${currentBusiness.products.length} items`,
+      change: `${products.length} items`,
       trend: 'up',
       icon: Package,
       color: 'text-warning',
@@ -268,11 +271,11 @@ const Reports = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {currentBusiness.products
+              {(currentBusiness.products || [])
                 .map((p) => ({
                   ...p,
-                  margin: ((p.sellingPrice - p.hpp) / p.sellingPrice) * 100,
-                  profit: (p.sellingPrice - p.hpp) * p.stock,
+                  margin: ((Number(p.selling_price) - Number(p.hpp)) / Number(p.selling_price)) * 100,
+                  profit: (Number(p.selling_price) - Number(p.hpp)) * p.stock,
                 }))
                 .sort((a, b) => b.margin - a.margin)
                 .slice(0, 5)

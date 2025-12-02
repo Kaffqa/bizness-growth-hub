@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -25,16 +26,35 @@ const queryClient = new QueryClient();
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) => {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, role, isLoading } = useAuthStore();
+  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
   
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
   
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+  if (allowedRoles && role && !allowedRoles.includes(role)) {
     return <Navigate to="/dashboard" replace />;
   }
   
+  return <>{children}</>;
+};
+
+// Auth initializer component
+const AuthInitializer = ({ children }: { children: React.ReactNode }) => {
+  const { initialize } = useAuthStore();
+
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
   return <>{children}</>;
 };
 
@@ -44,49 +64,51 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/login" element={<Login />} />
-          
-          {/* Protected User Routes */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          
-          {/* Workspace Routes */}
-          <Route
-            path="/workspace/:businessId"
-            element={
-              <ProtectedRoute>
-                <Workspace />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Overview />} />
-            <Route path="products" element={<Products />} />
-            <Route path="calculator" element={<Calculator />} />
-            <Route path="files" element={<Files />} />
-            <Route path="ai" element={<AITools />} />
-            <Route path="reports" element={<Reports />} />
-          </Route>
-          
-          {/* Admin Route */}
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute allowedRoles={["admin"]}>
-                <Admin />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthInitializer>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/login" element={<Login />} />
+            
+            {/* Protected User Routes */}
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            
+            {/* Workspace Routes */}
+            <Route
+              path="/workspace/:businessId"
+              element={
+                <ProtectedRoute>
+                  <Workspace />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Overview />} />
+              <Route path="products" element={<Products />} />
+              <Route path="calculator" element={<Calculator />} />
+              <Route path="files" element={<Files />} />
+              <Route path="ai" element={<AITools />} />
+              <Route path="reports" element={<Reports />} />
+            </Route>
+            
+            {/* Admin Route */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthInitializer>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

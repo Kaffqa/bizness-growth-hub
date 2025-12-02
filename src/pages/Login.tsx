@@ -1,19 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Building2, Mail, Lock, User, ArrowRight, Briefcase, Shield } from 'lucide-react';
+import { Building2, Mail, Lock, User, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuthStore, UserRole } from '@/stores/authStore';
+import { useAuthStore } from '@/stores/authStore';
 import { toast } from '@/hooks/use-toast';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login, register } = useAuthStore();
+  const { login, register, isAuthenticated, role } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<UserRole>('user');
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -24,14 +23,21 @@ const Login = () => {
   const [registerEmail, setRegisterEmail] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
 
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(role === 'admin' ? '/admin' : '/dashboard');
+    }
+  }, [isAuthenticated, role, navigate]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const success = await login(loginEmail, loginPassword, selectedRole);
-      if (success) {
+      const { error } = await login(loginEmail, loginPassword);
+      if (error) {
+        toast({ title: 'Error', description: error, variant: 'destructive' });
+      } else {
         toast({ title: 'Welcome back!', description: 'Successfully logged in.' });
-        navigate(selectedRole === 'admin' ? '/admin' : '/dashboard');
       }
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to login. Please try again.', variant: 'destructive' });
@@ -44,10 +50,11 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const success = await register(registerName, registerEmail, registerPassword, selectedRole);
-      if (success) {
+      const { error } = await register(registerName, registerEmail, registerPassword);
+      if (error) {
+        toast({ title: 'Error', description: error, variant: 'destructive' });
+      } else {
         toast({ title: 'Account created!', description: 'Welcome to Bizness.' });
-        navigate(selectedRole === 'admin' ? '/admin' : '/dashboard');
       }
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to register. Please try again.', variant: 'destructive' });
@@ -131,38 +138,6 @@ const Login = () => {
               <CardDescription>Sign in or create an account to get started</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Role Selection */}
-              <div className="flex gap-3 mb-6">
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole('user')}
-                  className={`flex-1 p-4 rounded-xl border-2 transition-all duration-200 ${
-                    selectedRole === 'user'
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-primary/50'
-                  }`}
-                >
-                  <Briefcase className={`w-6 h-6 mx-auto mb-2 ${selectedRole === 'user' ? 'text-primary' : 'text-muted-foreground'}`} />
-                  <p className={`text-sm font-medium ${selectedRole === 'user' ? 'text-primary' : 'text-muted-foreground'}`}>
-                    Business Owner
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole('admin')}
-                  className={`flex-1 p-4 rounded-xl border-2 transition-all duration-200 ${
-                    selectedRole === 'admin'
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-primary/50'
-                  }`}
-                >
-                  <Shield className={`w-6 h-6 mx-auto mb-2 ${selectedRole === 'admin' ? 'text-primary' : 'text-muted-foreground'}`} />
-                  <p className={`text-sm font-medium ${selectedRole === 'admin' ? 'text-primary' : 'text-muted-foreground'}`}>
-                    Administrator
-                  </p>
-                </button>
-              </div>
-
               <Tabs defaultValue="login" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 mb-6">
                   <TabsTrigger value="login">Login</TabsTrigger>
@@ -232,10 +207,11 @@ const Login = () => {
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
                         type="password"
-                        placeholder="Password"
+                        placeholder="Password (min 6 characters)"
                         value={registerPassword}
                         onChange={(e) => setRegisterPassword(e.target.value)}
                         className="pl-10"
+                        minLength={6}
                         required
                       />
                     </div>
