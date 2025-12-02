@@ -19,6 +19,7 @@ import { useBusinessStore } from '@/stores/businessStore';
 import { useAuthStore } from '@/stores/authStore';
 import { NavLink } from '@/components/NavLink';
 import { cn } from '@/lib/utils';
+import ThemeToggle from '@/components/ThemeToggle';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Overview', path: '' },
@@ -165,6 +166,8 @@ const Workspace = () => {
           </button>
 
           <div className="flex-1" />
+
+          <ThemeToggle />
 
           <Button variant="ghost" size="icon" className="relative">
             <Bell className="w-5 h-5" />

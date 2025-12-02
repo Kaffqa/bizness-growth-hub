@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Building2, ArrowRight, BarChart3, Package, Bot, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
+import ThemeToggle from '@/components/ThemeToggle';
 
 const features = [
   {
@@ -49,10 +50,13 @@ const Index = () => {
             </div>
             <span className="text-xl font-bold">Bizness</span>
           </div>
-          <Button variant="hero" onClick={() => navigate('/login')}>
-            Get Started
-            <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <Button variant="hero" onClick={() => navigate('/login')}>
+              Get Started
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
         </div>
       </nav>
 

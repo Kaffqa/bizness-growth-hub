@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, Building2, LogOut, ChevronRight, Store, TrendingUp, Package } from 'lucide-react';
+import ThemeToggle from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -83,6 +84,7 @@ const Dashboard = () => {
             <span className="text-xl font-bold">Bizness</span>
           </div>
           <div className="flex items-center gap-4">
+            <ThemeToggle />
             <div className="hidden sm:flex items-center gap-3">
               <img
                 src={user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`}
