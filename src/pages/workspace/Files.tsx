@@ -15,14 +15,14 @@ import {
   MoreVertical,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useBusinessStore, FileItem } from '@/stores/businessStore';
 import { toast } from '@/hooks/use-toast';
 
-const getFileIcon = (type: FileItem['type']) => {
+const getFileIcon = (type: string) => {
   switch (type) {
     case 'folder':
       return <Folder className="w-full h-full text-warning" />;
@@ -38,8 +38,10 @@ const getFileIcon = (type: FileItem['type']) => {
   }
 };
 
-const formatFileSize = (bytes?: number) => {
-  if (!bytes) return '';
+const formatFileSize = (sizeStr?: string) => {
+  if (!sizeStr) return '';
+  const bytes = parseInt(sizeStr);
+  if (isNaN(bytes)) return sizeStr;
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -54,17 +56,18 @@ const Files = () => {
 
   if (!currentBusiness) return null;
 
-  const currentFiles = currentBusiness.files.filter((f) => f.parentId === currentFolderId);
-  const breadcrumbs = getBreadcrumbs(currentBusiness.files, currentFolderId);
+  const files = currentBusiness.files || [];
+  const currentFiles = files.filter((f) => f.parent_id === currentFolderId);
+  const breadcrumbs = getBreadcrumbs(files, currentFolderId);
 
-  function getBreadcrumbs(files: FileItem[], folderId: string | null): FileItem[] {
+  function getBreadcrumbs(allFiles: FileItem[], folderId: string | null): FileItem[] {
     const crumbs: FileItem[] = [];
     let currentId = folderId;
     while (currentId) {
-      const folder = files.find((f) => f.id === currentId);
+      const folder = allFiles.find((f) => f.id === currentId);
       if (folder) {
         crumbs.unshift(folder);
-        currentId = folder.parentId;
+        currentId = folder.parent_id;
       } else {
         break;
       }
@@ -72,16 +75,19 @@ const Files = () => {
     return crumbs;
   }
 
-  const handleCreateFolder = () => {
+  const handleCreateFolder = async () => {
     if (!newFolderName.trim()) {
       toast({ title: 'Error', description: 'Please enter a folder name.', variant: 'destructive' });
       return;
     }
 
-    addFile(currentBusiness.id, {
+    await addFile({
       name: newFolderName,
       type: 'folder',
-      parentId: currentFolderId,
+      size: '0',
+      parent_id: currentFolderId,
+      is_folder: true,
+      business_id: currentBusiness.id,
     });
 
     toast({ title: 'Success', description: 'Folder created successfully!' });
@@ -89,29 +95,31 @@ const Files = () => {
     setNewFolderName('');
   };
 
-  const handleUploadFile = () => {
+  const handleUploadFile = async () => {
     // Simulate file upload
-    const fileTypes = ['pdf', 'xlsx', 'jpg', 'png', 'doc'] as const;
+    const fileTypes = ['pdf', 'xlsx', 'jpg', 'png', 'doc'];
     const randomType = fileTypes[Math.floor(Math.random() * fileTypes.length)];
     const randomSize = Math.floor(Math.random() * 5000000) + 100000;
 
-    addFile(currentBusiness.id, {
+    await addFile({
       name: `Uploaded_File_${Date.now()}.${randomType}`,
       type: randomType,
-      size: randomSize,
-      parentId: currentFolderId,
+      size: randomSize.toString(),
+      parent_id: currentFolderId,
+      is_folder: false,
+      business_id: currentBusiness.id,
     });
 
     toast({ title: 'Upload Complete', description: 'File uploaded successfully!' });
   };
 
-  const handleDeleteFile = (fileId: string) => {
-    deleteFile(currentBusiness.id, fileId);
+  const handleDeleteFile = async (fileId: string) => {
+    await deleteFile(fileId);
     toast({ title: 'Deleted', description: 'File removed successfully.' });
   };
 
   const handleOpenFolder = (folder: FileItem) => {
-    if (folder.type === 'folder') {
+    if (folder.is_folder) {
       setCurrentFolderId(folder.id);
     }
   };
@@ -239,7 +247,7 @@ const Files = () => {
                   </DropdownMenu>
                 </div>
                 <p className="text-sm font-medium text-center truncate">{file.name}</p>
-                {file.size && (
+                {!file.is_folder && file.size && (
                   <p className="text-xs text-muted-foreground text-center">{formatFileSize(file.size)}</p>
                 )}
               </Card>
@@ -262,10 +270,10 @@ const Files = () => {
                   <div className="w-10 h-10">{getFileIcon(file.type)}</div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{file.name}</p>
-                    <p className="text-xs text-muted-foreground">{file.createdAt}</p>
+                    <p className="text-xs text-muted-foreground">{file.created_at}</p>
                   </div>
                   <span className="text-sm text-muted-foreground">
-                    {file.size ? formatFileSize(file.size) : 'Folder'}
+                    {file.is_folder ? 'Folder' : formatFileSize(file.size)}
                   </span>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, Building2, LogOut, ChevronRight, Store, TrendingUp, Package } from 'lucide-react';
@@ -26,33 +26,42 @@ const businessEmojis = ['☕', '👕', '💻', '💄', '🏠', '🛠️', '📦'
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
-  const { businesses, addBusiness, setCurrentBusiness } = useBusinessStore();
+  const { user, profile, logout } = useAuthStore();
+  const { businesses, fetchBusinesses, addBusiness, setCurrentBusiness, isLoading } = useBusinessStore();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newBusinessName, setNewBusinessName] = useState('');
   const [newBusinessCategory, setNewBusinessCategory] = useState('');
   const [selectedEmoji, setSelectedEmoji] = useState('📦');
 
-  const userBusinesses = businesses.filter((b) => b.ownerId === user?.id || user?.role === 'admin');
+  useEffect(() => {
+    fetchBusinesses();
+  }, [fetchBusinesses]);
 
-  const handleCreateBusiness = () => {
+  const handleCreateBusiness = async () => {
     if (!newBusinessName || !newBusinessCategory) {
       toast({ title: 'Error', description: 'Please fill in all fields.', variant: 'destructive' });
       return;
     }
 
-    addBusiness({
+    if (!user) {
+      toast({ title: 'Error', description: 'You must be logged in.', variant: 'destructive' });
+      return;
+    }
+
+    const newBusiness = await addBusiness({
       name: newBusinessName,
       category: newBusinessCategory,
       logo: selectedEmoji,
-      ownerId: user?.id || '',
+      owner_id: user.id,
     });
 
-    toast({ title: 'Success', description: 'Business created successfully!' });
-    setIsDialogOpen(false);
-    setNewBusinessName('');
-    setNewBusinessCategory('');
-    setSelectedEmoji('📦');
+    if (newBusiness) {
+      toast({ title: 'Success', description: 'Business created successfully!' });
+      setIsDialogOpen(false);
+      setNewBusinessName('');
+      setNewBusinessCategory('');
+      setSelectedEmoji('📦');
+    }
   };
 
   const handleSelectBusiness = (business: typeof businesses[0]) => {
@@ -60,17 +69,20 @@ const Dashboard = () => {
     navigate(`/workspace/${business.id}`);
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
 
-  const totalRevenue = userBusinesses.reduce((acc, b) => {
-    const revenue = b.transactions.filter((t) => t.type === 'sale').reduce((sum, t) => sum + t.amount, 0);
+  const totalRevenue = businesses.reduce((acc, b) => {
+    const revenue = (b.transactions || []).filter((t) => t.type === 'sale').reduce((sum, t) => sum + t.amount, 0);
     return acc + revenue;
   }, 0);
 
-  const totalProducts = userBusinesses.reduce((acc, b) => acc + b.products.length, 0);
+  const totalProducts = businesses.reduce((acc, b) => acc + (b.products?.length || 0), 0);
+
+  const displayName = profile?.name || user?.email?.split('@')[0] || 'User';
+  const displayAvatar = profile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`;
 
   return (
     <div className="min-h-screen bg-background">
@@ -87,12 +99,12 @@ const Dashboard = () => {
             <ThemeToggle />
             <div className="hidden sm:flex items-center gap-3">
               <img
-                src={user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`}
-                alt={user?.name}
+                src={displayAvatar}
+                alt={displayName}
                 className="w-8 h-8 rounded-full"
               />
               <div className="text-sm">
-                <p className="font-medium">{user?.name}</p>
+                <p className="font-medium">{displayName}</p>
                 <p className="text-muted-foreground text-xs">{user?.email}</p>
               </div>
             </div>
@@ -110,7 +122,7 @@ const Dashboard = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name?.split(' ')[0]}!</h1>
+          <h1 className="text-3xl font-bold mb-2">Welcome back, {displayName.split(' ')[0]}!</h1>
           <p className="text-muted-foreground">Manage your businesses and track performance from one place.</p>
         </motion.div>
 
@@ -126,7 +138,7 @@ const Dashboard = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Total Businesses</p>
-                    <p className="text-3xl font-bold">{userBusinesses.length}</p>
+                    <p className="text-3xl font-bold">{businesses.length}</p>
                   </div>
                   <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
                     <Store className="w-6 h-6 text-primary" />
@@ -243,7 +255,11 @@ const Dashboard = () => {
           </Dialog>
         </div>
 
-        {userBusinesses.length === 0 ? (
+        {isLoading ? (
+          <Card variant="glass" className="p-12 text-center">
+            <div className="animate-pulse text-muted-foreground">Loading businesses...</div>
+          </Card>
+        ) : businesses.length === 0 ? (
           <Card variant="glass" className="p-12 text-center">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
               <Store className="w-8 h-8 text-primary" />
@@ -257,7 +273,7 @@ const Dashboard = () => {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {userBusinesses.map((business, index) => (
+            {businesses.map((business, index) => (
               <motion.div
                 key={business.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -283,11 +299,11 @@ const Dashboard = () => {
                     <div className="flex items-center gap-4 text-sm">
                       <div>
                         <span className="text-muted-foreground">Products:</span>{' '}
-                        <span className="font-medium">{business.products.length}</span>
+                        <span className="font-medium">{business.products?.length || 0}</span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">Files:</span>{' '}
-                        <span className="font-medium">{business.files.length}</span>
+                        <span className="font-medium">{business.files?.length || 0}</span>
                       </div>
                     </div>
                   </CardContent>

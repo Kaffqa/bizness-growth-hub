@@ -20,13 +20,14 @@ const Products = () => {
     name: '',
     category: '',
     hpp: '',
-    sellingPrice: '',
+    selling_price: '',
     stock: '',
   });
 
   if (!currentBusiness) return null;
 
-  const filteredProducts = currentBusiness.products.filter(
+  const products = currentBusiness.products || [];
+  const filteredProducts = products.filter(
     (p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.category.toLowerCase().includes(searchQuery.toLowerCase())
@@ -39,18 +40,18 @@ const Products = () => {
         name: product.name,
         category: product.category,
         hpp: product.hpp.toString(),
-        sellingPrice: product.sellingPrice.toString(),
+        selling_price: product.selling_price.toString(),
         stock: product.stock.toString(),
       });
     } else {
       setEditingProduct(null);
-      setFormData({ name: '', category: '', hpp: '', sellingPrice: '', stock: '' });
+      setFormData({ name: '', category: '', hpp: '', selling_price: '', stock: '' });
     }
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = () => {
-    if (!formData.name || !formData.category || !formData.hpp || !formData.sellingPrice || !formData.stock) {
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.category || !formData.hpp || !formData.selling_price || !formData.stock) {
       toast({ title: 'Error', description: 'Please fill in all fields.', variant: 'destructive' });
       return;
     }
@@ -59,24 +60,25 @@ const Products = () => {
       name: formData.name,
       category: formData.category,
       hpp: parseFloat(formData.hpp),
-      sellingPrice: parseFloat(formData.sellingPrice),
+      selling_price: parseFloat(formData.selling_price),
       stock: parseInt(formData.stock),
+      business_id: currentBusiness.id,
     };
 
     if (editingProduct) {
-      updateProduct(currentBusiness.id, editingProduct.id, productData);
+      await updateProduct(editingProduct.id, productData);
       toast({ title: 'Success', description: 'Product updated successfully!' });
     } else {
-      addProduct(currentBusiness.id, productData);
+      await addProduct(productData);
       toast({ title: 'Success', description: 'Product added successfully!' });
     }
 
     setIsDialogOpen(false);
-    setFormData({ name: '', category: '', hpp: '', sellingPrice: '', stock: '' });
+    setFormData({ name: '', category: '', hpp: '', selling_price: '', stock: '' });
   };
 
-  const handleDelete = (productId: string) => {
-    deleteProduct(currentBusiness.id, productId);
+  const handleDelete = async (productId: string) => {
+    await deleteProduct(productId);
     toast({ title: 'Deleted', description: 'Product removed successfully.' });
   };
 
@@ -134,8 +136,8 @@ const Products = () => {
                   <Input
                     type="number"
                     placeholder="e.g., 25000"
-                    value={formData.sellingPrice}
-                    onChange={(e) => setFormData({ ...formData, sellingPrice: e.target.value })}
+                    value={formData.selling_price}
+                    onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
                   />
                 </div>
               </div>
@@ -148,10 +150,10 @@ const Products = () => {
                   onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                 />
               </div>
-              {formData.hpp && formData.sellingPrice && (
+              {formData.hpp && formData.selling_price && (
                 <div className="p-3 rounded-lg bg-success/10 border border-success/20">
                   <p className="text-sm text-success">
-                    Calculated Margin: {calculateMargin(parseFloat(formData.hpp), parseFloat(formData.sellingPrice))}%
+                    Calculated Margin: {calculateMargin(parseFloat(formData.hpp), parseFloat(formData.selling_price))}%
                   </p>
                 </div>
               )}
@@ -220,8 +222,8 @@ const Products = () => {
                           {product.category}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">Rp {product.hpp.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">Rp {product.sellingPrice.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">Rp {Number(product.hpp).toLocaleString()}</TableCell>
+                      <TableCell className="text-right">Rp {Number(product.selling_price).toLocaleString()}</TableCell>
                       <TableCell className="text-right">
                         <span className={product.stock < 10 ? 'text-destructive font-semibold' : ''}>
                           {product.stock}
@@ -229,7 +231,7 @@ const Products = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <span className="text-success font-medium">
-                          {calculateMargin(product.hpp, product.sellingPrice)}%
+                          {calculateMargin(Number(product.hpp), Number(product.selling_price))}%
                         </span>
                       </TableCell>
                       <TableCell className="text-right">

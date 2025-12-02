@@ -33,19 +33,19 @@ const navItems = [
 const Workspace = () => {
   const { businessId } = useParams();
   const navigate = useNavigate();
-  const { businesses, setCurrentBusiness, currentBusiness } = useBusinessStore();
-  const { user } = useAuthStore();
+  const { fetchBusinessDetails, currentBusiness } = useBusinessStore();
+  const { profile, user } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    const business = businesses.find((b) => b.id === businessId);
-    if (business) {
-      setCurrentBusiness(business);
-    } else {
-      navigate('/dashboard');
+    if (businessId) {
+      fetchBusinessDetails(businessId);
     }
-  }, [businessId, businesses, setCurrentBusiness, navigate]);
+  }, [businessId, fetchBusinessDetails]);
+
+  const displayName = profile?.name || user?.email?.split('@')[0] || 'User';
+  const displayAvatar = profile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`;
 
   if (!currentBusiness) {
     return (
@@ -176,11 +176,11 @@ const Workspace = () => {
 
           <div className="flex items-center gap-3">
             <img
-              src={user?.avatar}
-              alt={user?.name}
+              src={displayAvatar}
+              alt={displayName}
               className="w-8 h-8 rounded-full"
             />
-            <span className="hidden sm:block text-sm font-medium">{user?.name}</span>
+            <span className="hidden sm:block text-sm font-medium">{displayName}</span>
           </div>
         </header>
 
