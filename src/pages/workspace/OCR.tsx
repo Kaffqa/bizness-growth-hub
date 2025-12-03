@@ -8,15 +8,16 @@ import {
   History, 
   FileText, 
   Calendar,
-  DollarSign,
   ArrowRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Pastikan ada atau ganti div biasa dengan overflow-y-auto
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+
+// --- KONFIGURASI API ---
+const API_BASE_URL = "https://9c7703a72520.ngrok-free.app"; 
 
 // --- Types ---
 interface OCRItem {
@@ -32,71 +33,131 @@ interface OCRData {
   total: number;
 }
 
-// --- Mock Data Generator ---
-const generateMockData = (): OCRData => {
-  const vendors = ['PT. Supply Wholesale', 'Berkah Jaya', 'Indogrosir', 'Mitra Pangan'];
-  const itemsList = [
-    { name: 'Coffee Beans (1kg)', price: 150000 },
-    { name: 'Milk (5L)', price: 75000 },
-    { name: 'Sugar (2kg)', price: 28000 },
-    { name: 'Paper Cups (100pcs)', price: 45000 },
-    { name: 'Vanilla Syrup', price: 90000 },
-  ];
+// --- Helper: Parse Text from AI to Object ---
+const parseOCRText = (text: string): OCRData => {
+  const lines = text.split('\n');
+  const data: any = { items: [], total: 0 };
+  
+  let currentItem: any = {};
 
-  // Randomize items
-  const selectedItems = itemsList.sort(() => 0.5 - Math.random()).slice(0, 3);
-  const total = selectedItems.reduce((sum, item) => sum + item.price, 0);
+  lines.forEach(line => {
+    const [key, ...rest] = line.split(':');
+    const value = rest.join(':').trim();
 
+    if (!key || !value) return;
+
+    const lowerKey = key.trim().toLowerCase();
+
+    if (lowerKey.includes('toko') || lowerKey.includes('vendor')) data.vendor = value;
+    else if (lowerKey.includes('tanggal')) data.date = value;
+    else if (lowerKey.includes('total_bayar')) data.total = parseInt(value.replace(/\D/g, '')) || 0;
+    else if (lowerKey.includes('nama')) currentItem.name = value;
+    else if (lowerKey.includes('harga_satuan') || lowerKey.includes('total')) {
+        // Jika nemu harga, berarti item selesai atau update harga
+        if (lowerKey.includes('total') && !lowerKey.includes('bayar')) {
+             currentItem.price = parseInt(value.replace(/\D/g, '')) || 0;
+             if(currentItem.name) {
+                 data.items.push({...currentItem});
+                 currentItem = {}; // Reset for next item
+             }
+        }
+    }
+  });
+
+  // Fallback values if parsing fails
   return {
     id: Date.now().toString(),
-    date: new Date().toISOString().split('T')[0],
-    vendor: vendors[Math.floor(Math.random() * vendors.length)],
-    items: selectedItems,
-    total: total,
+    date: data.date || new Date().toISOString().split('T')[0],
+    vendor: data.vendor || "Unknown Vendor",
+    items: data.items.length > 0 ? data.items : [],
+    total: data.total || 0
   };
 };
+
 
 const OCRPage = () => {
   // --- State ---
   const [isScanning, setIsScanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [currentResult, setCurrentResult] = useState<OCRData | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
-  // Dummy History Data
-  const [history, setHistory] = useState<OCRData[]>([
-    {
-      id: '123',
-      date: '2025-11-20',
-      vendor: 'Mitra Pangan',
-      items: [{ name: 'Flour (10kg)', price: 120000 }],
-      total: 120000
-    }
-  ]);
+  // History Data
+  const [history, setHistory] = useState<OCRData[]>([]);
 
   // --- Handlers ---
+  
+  // 1. File Upload Handler
+  const handleFileUpload = (file: File) => {
+    if (!file) return;
+    
+    setSelectedFile(file);
+    setCurrentResult(null); // Reset previous result
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  };
+
+  const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFileUpload(e.target.files[0]);
+    }
+  };
+
+  // 2. Scan Process (Fetch to Backend)
   const handleScan = async () => {
+    if (!selectedFile) {
+        toast({ title: "Error", description: "Silakan upload gambar struk terlebih dahulu.", variant: "destructive" });
+        return;
+    }
+
     setIsScanning(true);
     setCurrentResult(null);
     
-    // Simulate OCR processing delay
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    
-    const newData = generateMockData();
-    setCurrentResult(newData);
-    setHistory((prev) => [newData, ...prev]); // Add to history
-    
-    setIsScanning(false);
-    toast({ title: 'Scan Complete', description: 'Receipt data extracted successfully!' });
-  };
+    try {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    handleScan();
+        const response = await fetch(`${API_BASE_URL}/ocr`, {
+            method: "POST",
+            headers: {
+                "ngrok-skip-browser-warning": "true",
+            },
+            body: formData,
+        });
+
+        if (!response.ok) throw new Error("Gagal memproses gambar");
+
+        const data = await response.json();
+        const parsedData = parseOCRText(data.result);
+        
+        setCurrentResult(parsedData);
+        setHistory((prev) => [parsedData, ...prev]);
+        toast({ title: 'Scan Complete', description: 'Data struk berhasil diekstrak!' });
+
+    } catch (error) {
+        console.error(error);
+        toast({ title: "Error", description: "Gagal terhubung ke server OCR.", variant: "destructive" });
+    } finally {
+        setIsScanning(false);
+    }
   };
 
   const handleSelectHistory = (data: OCRData) => {
     setCurrentResult(data);
+    // Optional: Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -123,39 +184,53 @@ const OCRPage = () => {
             <Card variant="glass">
               <CardHeader>
                 <CardTitle>Upload Receipt</CardTitle>
-                <CardDescription>Drag and drop image or click to scan</CardDescription>
+                <CardDescription>Drag and drop image or click to browse</CardDescription>
               </CardHeader>
               <CardContent>
                 <div
                   onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                   onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
+                  onDrop={onDrop}
                   className={cn(
-                    "relative border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer h-64 flex flex-col items-center justify-center",
+                    "relative border-2 border-dashed rounded-xl p-4 text-center transition-all min-h-[250px] flex flex-col items-center justify-center overflow-hidden",
                     isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-secondary/50"
                   )}
                 >
-                  {isScanning ? (
-                    <div className="space-y-4">
-                      <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto relative">
-                        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                        <div className="absolute inset-0 rounded-full border-4 border-primary/20 animate-pulse"></div>
+                  {preview ? (
+                      <div className="relative w-full h-full flex flex-col items-center gap-4">
+                          <img src={preview} alt="Receipt Preview" className="max-h-[200px] object-contain rounded-lg shadow-sm" />
+                          <div className="flex gap-2">
+                              <Button variant="outline" onClick={() => { setPreview(null); setSelectedFile(null); }}>Change</Button>
+                              <Button variant="hero" onClick={handleScan} disabled={isScanning}>
+                                {isScanning ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Scanning...
+                                    </>
+                                ) : (
+                                    <>
+                                        <ScanText className="w-4 h-4 mr-2" /> Process OCR
+                                    </>
+                                )}
+                              </Button>
+                          </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-lg">Scanning...</p>
-                        <p className="text-sm text-muted-foreground">Extracting text from image</p>
-                      </div>
-                    </div>
                   ) : (
-                    <div className="space-y-4" onClick={handleScan}>
+                    <div className="space-y-4 cursor-pointer w-full" onClick={() => document.getElementById('file-upload')?.click()}>
                       <div className="w-16 h-16 rounded-2xl bg-secondary flex items-center justify-center mx-auto shadow-sm">
                         <Upload className="w-8 h-8 text-muted-foreground" />
                       </div>
                       <div>
                         <p className="font-medium text-lg">Drop receipt here</p>
-                        <p className="text-sm text-muted-foreground">Supports JPG, PNG, PDF</p>
+                        <p className="text-sm text-muted-foreground">Supports JPG, PNG</p>
                       </div>
-                      <Button variant="hero" className="mt-2">
+                      <input 
+                        id="file-upload" 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={onFileSelect}
+                      />
+                      <Button variant="outline" className="mt-2 pointer-events-none">
                         Select File
                       </Button>
                     </div>
@@ -183,7 +258,7 @@ const OCRPage = () => {
                         <CardTitle className="text-lg">Extracted Data</CardTitle>
                       </div>
                       <span className="text-xs font-mono bg-background/50 px-2 py-1 rounded text-muted-foreground">
-                        ID: {currentResult.id}
+                        ID: {currentResult.id.slice(-6)}
                       </span>
                     </div>
                   </CardHeader>
@@ -208,12 +283,14 @@ const OCRPage = () => {
                     <div className="space-y-2">
                       <label className="text-xs font-semibold text-muted-foreground uppercase">Items Found</label>
                       <div className="rounded-lg border border-border overflow-hidden bg-background/40">
-                        {currentResult.items.map((item, i) => (
+                        {currentResult.items.length > 0 ? currentResult.items.map((item, i) => (
                           <div key={i} className="flex items-center justify-between p-3 border-b border-border last:border-0 hover:bg-background/60 transition-colors">
                             <span className="text-sm font-medium">{item.name}</span>
                             <span className="text-sm font-bold text-muted-foreground">Rp {item.price.toLocaleString()}</span>
                           </div>
-                        ))}
+                        )) : (
+                            <div className="p-4 text-center text-sm text-muted-foreground">Tidak ada item spesifik terdeteksi.</div>
+                        )}
                       </div>
                     </div>
 
@@ -224,8 +301,8 @@ const OCRPage = () => {
                     </div>
 
                     <div className="flex gap-3">
-                       <Button variant="outline" className="flex-1" onClick={() => setCurrentResult(null)}>Cancel</Button>
-                       <Button variant="hero" className="flex-1">Save to Inventory</Button>
+                        <Button variant="outline" className="flex-1" onClick={() => setCurrentResult(null)}>Cancel</Button>
+                        <Button variant="hero" className="flex-1">Save to Inventory</Button>
                     </div>
                   </CardContent>
                 </Card>

@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { jsPDF } from "jspdf"; // Import jsPDF
 import { 
   Calculator, 
   Sparkles, 
@@ -9,17 +10,18 @@ import {
   Trash2, 
   Plus, 
   RefreshCcw,
-  DollarSign,
   TrendingUp,
-  AlertCircle,
-  ArrowRight
+  Download,
+  AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
-import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+
+// --- KONFIGURASI API ---
+const API_BASE_URL = "https://9c7703a72520.ngrok-free.app"; 
 
 // Utility Functions
 const formatRp = (value: number) => {
@@ -38,13 +40,14 @@ const CalculatorPage = () => {
   const [materials, setMaterials] = useState([{ id: 1, name: "", unit: "", price: "" }]);
   const [laborCost, setLaborCost] = useState("");
   const [overheadCost, setOverheadCost] = useState("");
-  const [quantity, setQuantity] = useState("1"); // Default 1 unit
+  const [quantity, setQuantity] = useState("1");
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [targetMargin, setTargetMargin] = useState([30]);
   
   // UX States
   const [showResult, setShowResult] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState(""); 
 
   // --- Logic ---
   const addMaterial = () => {
@@ -71,13 +74,11 @@ const CalculatorPage = () => {
     const labor = safeNumber(laborCost);
     const overhead = safeNumber(overheadCost);
     const qty = safeNumber(quantity) || 1;
-    // Asumsi: Input biaya adalah total untuk produksi 'qty' unit
     return (materialsCost + labor + overhead) / qty;
   };
 
   const calculateSellingPrice = (hpp: number, margin: number) => {
     if (margin >= 100) return 0;
-    // Formula Margin Pricing: Harga Jual = HPP / (1 - %Margin)
     return hpp / (1 - margin / 100);
   };
 
@@ -88,6 +89,7 @@ const CalculatorPage = () => {
   const profitPerUnit = sellingPrice - hppPerUnit;
   const totalProductionCost = totalMaterialsCost + safeNumber(laborCost) + safeNumber(overheadCost);
 
+  // --- INTEGRASI AI BACKEND ---
   const handleCalculate = async () => {
     if (!productName) {
         toast({ title: "Error", description: "Mohon isi nama produk terlebih dahulu.", variant: "destructive" });
@@ -95,11 +97,131 @@ const CalculatorPage = () => {
     }
     
     setIsCalculating(true);
-    // Simulate AI Processing
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    setShowResult(true);
-    setIsCalculating(false);
-    toast({ title: "Success", description: "Kalkulasi dan rekomendasi harga berhasil dibuat." });
+    setAiAnalysis(""); 
+
+    const materialsText = materials
+      .filter(m => m.name)
+      .map(m => `
+- nama bahan = ${m.name}
+- satuan = ${m.unit}
+- harga beli = ${safeNumber(m.price)}
+      `.trim()).join("\n");
+
+    const promptInput = `
+nama produk = ${productName}
+
+bahan:
+${materialsText}
+
+biaya operasional:
+biaya tenaga kerja per hari atau per bulan = ${safeNumber(laborCost)}
+biaya overhead per hari atau per bulan = ${safeNumber(overheadCost)}
+
+jumlah produk atau unit = ${quantity}
+
+deskripsi tambahan = ${additionalNotes}
+    `.trim();
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/hpp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true", 
+        },
+        body: JSON.stringify({ user_input: promptInput }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setAiAnalysis(data.result);
+      setShowResult(true);
+      toast({ title: "Success", description: "Analisis AI berhasil diterima." });
+
+    } catch (error) {
+      console.error("AI Error:", error);
+      toast({ 
+        title: "Connection Error", 
+        description: "Gagal menghubungi server AI. Pastikan backend berjalan.", 
+        variant: "destructive" 
+      });
+      setShowResult(true);
+      setAiAnalysis("Gagal memuat rekomendasi AI. Silakan periksa koneksi backend Anda.");
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  // --- EXPORT PDF FEATURE ---
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    const margin = 20;
+    let yPos = 20;
+
+    // Title
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text("Laporan HPP & Rekomendasi Harga", margin, yPos);
+    yPos += 10;
+
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Produk: ${productName}`, margin, yPos);
+    yPos += 10;
+    doc.text(`Tanggal: ${new Date().toLocaleDateString('id-ID')}`, margin, yPos);
+    yPos += 15;
+
+    // Section: Perhitungan Manual
+    doc.setFont("helvetica", "bold");
+    doc.text("Rincian Biaya (Manual Calculation)", margin, yPos);
+    yPos += 8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`Total Material: ${formatRp(totalMaterialsCost)}`, margin, yPos);
+    yPos += 6;
+    doc.text(`Tenaga Kerja: ${formatRp(safeNumber(laborCost))}`, margin, yPos);
+    yPos += 6;
+    doc.text(`Overhead: ${formatRp(safeNumber(overheadCost))}`, margin, yPos);
+    yPos += 6;
+    doc.text(`Jumlah Produksi: ${quantity} unit`, margin, yPos);
+    yPos += 10;
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`HPP per Unit: ${formatRp(hppPerUnit)}`, margin, yPos);
+    yPos += 6;
+    doc.text(`Harga Jual Manual (${targetMargin[0]}% Margin): ${formatRp(sellingPrice)}`, margin, yPos);
+    yPos += 6;
+    doc.text(`Profit per Unit: ${formatRp(profitPerUnit)}`, margin, yPos);
+    yPos += 15;
+
+    // Section: Analisis AI
+    if (aiAnalysis) {
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("Analisis & Rekomendasi AI (Gemini)", margin, yPos);
+        yPos += 8;
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        
+        // Handle long text wrapping
+        const splitText = doc.splitTextToSize(aiAnalysis, 170); // 170mm width
+        
+        // Check if text exceeds page height
+        if (yPos + splitText.length * 5 > 280) {
+            doc.addPage();
+            yPos = 20;
+        }
+        
+        doc.text(splitText, margin, yPos);
+    }
+
+    doc.save(`Laporan_HPP_${productName.replace(/\s+/g, '_')}.pdf`);
+    toast({ title: "Exported", description: "Laporan PDF berhasil diunduh." });
   };
 
   const handleReset = () => {
@@ -110,6 +232,7 @@ const CalculatorPage = () => {
     setQuantity("1");
     setAdditionalNotes("");
     setShowResult(false);
+    setAiAnalysis("");
   };
 
   return (
@@ -119,20 +242,22 @@ const CalculatorPage = () => {
         <div>
           <h1 className="text-2xl font-bold mb-1 flex items-center gap-2">
             <Calculator className="w-6 h-6 text-primary" />
-            HPP Calculator
+            HPP Calculator + AI
           </h1>
-          <p className="text-muted-foreground">Calculate Cost of Goods Sold and get AI pricing recommendations.</p>
+          <p className="text-muted-foreground">Hitung HPP dan dapatkan strategi harga cerdas dari AI (Gemini).</p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleReset} className="w-fit">
-            <RefreshCcw className="w-4 h-4 mr-2" /> Reset Data
-        </Button>
+        <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleReset}>
+                <RefreshCcw className="w-4 h-4 mr-2" /> Reset
+            </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        {/* Left Column: Inputs (Form) - Takes 7 Columns */}
+        {/* Left Column: Inputs */}
         <div className="lg:col-span-7 space-y-6">
-          
+          {/* ... (Kode Input Form tetap sama seperti sebelumnya) ... */}
           {/* 1. Product & Quantity */}
           <Card variant="glass">
             <CardHeader>
@@ -164,14 +289,23 @@ const CalculatorPage = () => {
                         </div>
                     </div>
                 </div>
+                <div>
+                    <label className="text-sm font-medium mb-1.5 block">Catatan Tambahan (Opsional)</label>
+                    <Input 
+                        placeholder="Contoh: Target pasar mahasiswa, lokasi dekat kampus..." 
+                        value={additionalNotes}
+                        onChange={(e) => setAdditionalNotes(e.target.value)}
+                        className="bg-background/50"
+                    />
+                </div>
             </CardContent>
           </Card>
 
-          {/* 2. Materials (Dynamic List) */}
+          {/* 2. Materials */}
           <Card variant="glass">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
-                    <Package className="w-4 h-4 text-primary" /> Bahan Baku (Raw Materials)
+                    <Package className="w-4 h-4 text-primary" /> Bahan Baku
                 </CardTitle>
                 <Button size="sm" variant="ghost" onClick={addMaterial} className="text-primary hover:text-primary/80 hover:bg-primary/10">
                     <Plus className="w-4 h-4 mr-1" /> Add Item
@@ -206,7 +340,7 @@ const CalculatorPage = () => {
                                 />
                             </div>
                             <div className="flex-[1.5]">
-                                <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Harga (Total)</label>
+                                <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Harga</label>
                                 <Input 
                                     type="number" 
                                     placeholder="0" 
@@ -237,14 +371,14 @@ const CalculatorPage = () => {
           <Card variant="glass">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
-                    <Zap className="w-4 h-4 text-primary" /> Biaya Operasional (Operational Costs)
+                    <Zap className="w-4 h-4 text-primary" /> Biaya Operasional
                 </CardTitle>
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label className="text-sm font-medium mb-1.5 flex items-center gap-2">
-                             <Users className="w-3 h-3" /> Tenaga Kerja (Labor)
+                             <Users className="w-3 h-3" /> Tenaga Kerja
                         </label>
                         <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">Rp</span>
@@ -259,7 +393,7 @@ const CalculatorPage = () => {
                     </div>
                     <div>
                         <label className="text-sm font-medium mb-1.5 flex items-center gap-2">
-                             <Zap className="w-3 h-3" /> Overhead (Listrik, Air, etc)
+                             <Zap className="w-3 h-3" /> Overhead (Listrik, Air)
                         </label>
                         <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">Rp</span>
@@ -276,16 +410,13 @@ const CalculatorPage = () => {
             </CardContent>
           </Card>
 
-          {/* 4. Margin Slider */}
+          {/* 4. Action Button */}
           <Card variant="glass" className="border-primary/20 bg-primary/5">
             <CardContent className="pt-6">
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <label className="font-semibold flex items-center gap-2">
-                            Target Margin Keuntungan
-                            <span className="text-xs font-normal text-muted-foreground bg-background/50 px-2 py-0.5 rounded-full border border-border">
-                                Recommended: 30-50%
-                            </span>
+                            Manual Margin Calculator
                         </label>
                         <span className="text-2xl font-bold text-primary">{targetMargin[0]}%</span>
                     </div>
@@ -297,10 +428,6 @@ const CalculatorPage = () => {
                         step={5}
                         className="py-4"
                     />
-                    <div className="flex justify-between text-xs text-muted-foreground font-mono">
-                        <span>Min (10%)</span>
-                        <span>Max (80%)</span>
-                    </div>
                 </div>
                 
                 <Button 
@@ -312,11 +439,11 @@ const CalculatorPage = () => {
                     {isCalculating ? (
                         <>
                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                            Menganalisis Harga...
+                            Menghubungi AI...
                         </>
                     ) : (
                         <>
-                            <Sparkles className="w-5 h-5 mr-2" /> Kalkulasi & Rekomendasi AI
+                            <Sparkles className="w-5 h-5 mr-2" /> Hitung & Dapatkan Rekomendasi
                         </>
                     )}
                 </Button>
@@ -324,7 +451,7 @@ const CalculatorPage = () => {
           </Card>
         </div>
 
-        {/* Right Column: Results (Sticky) - Takes 5 Columns */}
+        {/* Right Column: Results */}
         <div className="lg:col-span-5 lg:sticky lg:top-6">
             <AnimatePresence mode="wait">
                 {showResult ? (
@@ -336,14 +463,13 @@ const CalculatorPage = () => {
                     >
                         {/* Main Result Card */}
                         <Card className="border-0 shadow-2xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground relative overflow-hidden">
-                             {/* Decorative Background */}
                             <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
                             <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-32 h-32 bg-black/10 rounded-full blur-2xl" />
 
                             <CardHeader className="pb-2 relative z-10">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <CardDescription className="text-primary-foreground/70">Rekomendasi Harga Jual</CardDescription>
+                                        <CardDescription className="text-primary-foreground/70">Harga Jual Manual ({targetMargin[0]}% Margin)</CardDescription>
                                         <CardTitle className="text-3xl font-bold mt-1">{formatRp(Math.ceil(sellingPrice))}</CardTitle>
                                     </div>
                                     <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
@@ -393,26 +519,27 @@ const CalculatorPage = () => {
                             </CardContent>
                         </Card>
 
-                        {/* AI Insights */}
-                        <Card variant="glass" className="border-l-4 border-l-primary">
-                            <CardHeader className="pb-2">
+                        {/* AI Insights & Recommendation */}
+                        <Card variant="glass" className="border-l-4 border-l-primary bg-primary/5">
+                            <CardHeader className="pb-2 flex flex-row items-center justify-between">
                                 <CardTitle className="text-sm flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4 text-primary" /> AI Insights
+                                    <Sparkles className="w-4 h-4 text-primary" /> Analisis AI
                                 </CardTitle>
+                                {aiAnalysis && (
+                                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={handleExportPDF}>
+                                        <Download className="w-3 h-3 mr-1" /> PDF
+                                    </Button>
+                                )}
                             </CardHeader>
                             <CardContent>
-                                <ul className="space-y-2">
-                                    {[
-                                        `Margin ${targetMargin[0]}% sangat sehat untuk kategori F&B.`,
-                                        "Pertimbangkan bundling untuk meningkatkan nilai transaksi rata-rata.",
-                                        "Pastikan overhead cost mencakup biaya kemasan."
-                                    ].map((insight, i) => (
-                                        <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
-                                            <ArrowRight className="w-3 h-3 text-primary mt-0.5 flex-shrink-0" />
-                                            {insight}
-                                        </li>
-                                    ))}
-                                </ul>
+                                <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap font-mono bg-background/50 p-3 rounded-lg border border-border/50 max-h-[400px] overflow-y-auto">
+                                    {aiAnalysis ? aiAnalysis : (
+                                        <div className="flex items-center gap-2 opacity-50">
+                                            <AlertCircle className="w-4 h-4" />
+                                            <span>Menunggu respon AI...</span>
+                                        </div>
+                                    )}
+                                </div>
                             </CardContent>
                         </Card>
                     </motion.div>
@@ -427,7 +554,7 @@ const CalculatorPage = () => {
                         </div>
                         <h3 className="font-semibold text-lg mb-2">Belum ada kalkulasi</h3>
                         <p className="text-sm text-muted-foreground max-w-xs">
-                            Isi detail produk dan biaya di sebelah kiri, lalu klik tombol kalkulasi untuk melihat rekomendasi harga AI.
+                            Isi detail produk dan biaya di sebelah kiri, lalu klik tombol kalkulasi untuk melihat rekomendasi harga dari AI.
                         </p>
                     </motion.div>
                 )}

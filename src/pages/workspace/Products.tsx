@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Search, Edit2, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, AlertTriangle, Download } from 'lucide-react'; // Tambahkan icon Download
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -86,6 +86,52 @@ const Products = () => {
     return (((sellingPrice - hpp) / sellingPrice) * 100).toFixed(1);
   };
 
+  // --- FITUR EXPORT CSV ---
+  const handleExportCSV = () => {
+    if (filteredProducts.length === 0) {
+      toast({ title: 'Error', description: 'No data to export.', variant: 'destructive' });
+      return;
+    }
+
+    // 1. Define Headers
+    const headers = ["Product Name", "Category", "HPP (Rp)", "Selling Price (Rp)", "Stock", "Margin (%)"];
+
+    // 2. Format Data Rows
+    const rows = filteredProducts.map(p => {
+        // Handle comma in text fields (e.g., "Coffee, Arabica") to prevent CSV breakage
+        const safeName = `"${p.name.replace(/"/g, '""')}"`;
+        const safeCategory = `"${p.category.replace(/"/g, '""')}"`;
+        
+        return [
+            safeName,
+            safeCategory,
+            p.hpp,
+            p.selling_price,
+            p.stock,
+            calculateMargin(Number(p.hpp), Number(p.selling_price))
+        ].join(",");
+    });
+
+    // 3. Combine into CSV String with BOM for Excel compatibility
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+
+    // 4. Trigger Download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Format filename with date
+    const date = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `Products_Inventory_${date}.csv`);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({ title: 'Success', description: 'Data exported to CSV successfully.' });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -93,76 +139,86 @@ const Products = () => {
           <h1 className="text-2xl font-bold mb-1">Products & Inventory</h1>
           <p className="text-muted-foreground">Manage your product catalog and stock levels.</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="hero" onClick={() => handleOpenDialog()}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Product
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 mt-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Product Name</label>
-                <Input
-                  placeholder="e.g., Espresso"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Category</label>
-                <Input
-                  placeholder="e.g., Coffee"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">HPP (Cost)</label>
-                  <Input
-                    type="number"
-                    placeholder="e.g., 10000"
-                    value={formData.hpp}
-                    onChange={(e) => setFormData({ ...formData, hpp: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Selling Price</label>
-                  <Input
-                    type="number"
-                    placeholder="e.g., 25000"
-                    value={formData.selling_price}
-                    onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Stock Quantity</label>
-                <Input
-                  type="number"
-                  placeholder="e.g., 100"
-                  value={formData.stock}
-                  onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                />
-              </div>
-              {formData.hpp && formData.selling_price && (
-                <div className="p-3 rounded-lg bg-success/10 border border-success/20">
-                  <p className="text-sm text-success">
-                    Calculated Margin: {calculateMargin(parseFloat(formData.hpp), parseFloat(formData.selling_price))}%
-                  </p>
-                </div>
-              )}
-              <Button onClick={handleSubmit} className="w-full" variant="hero">
-                {editingProduct ? 'Update Product' : 'Add Product'}
+        
+        <div className="flex gap-2">
+          {/* Tombol Export Baru */}
+          <Button variant="outline" onClick={handleExportCSV}>
+            <Download className="w-4 h-4 mr-2" />
+            Export CSV
+          </Button>
+
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="hero" onClick={() => handleOpenDialog()}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Product
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</DialogTitle>
+              </DialogHeader>
+              {/* ... (Isi Dialog Form tetap sama) ... */}
+              <div className="space-y-4 mt-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Product Name</label>
+                  <Input
+                    placeholder="e.g., Espresso"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Category</label>
+                  <Input
+                    placeholder="e.g., Coffee"
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">HPP (Cost)</label>
+                    <Input
+                      type="number"
+                      placeholder="e.g., 10000"
+                      value={formData.hpp}
+                      onChange={(e) => setFormData({ ...formData, hpp: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Selling Price</label>
+                    <Input
+                      type="number"
+                      placeholder="e.g., 25000"
+                      value={formData.selling_price}
+                      onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Stock Quantity</label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 100"
+                    value={formData.stock}
+                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                  />
+                </div>
+                {formData.hpp && formData.selling_price && (
+                  <div className="p-3 rounded-lg bg-success/10 border border-success/20">
+                    <p className="text-sm text-success">
+                      Calculated Margin: {calculateMargin(parseFloat(formData.hpp), parseFloat(formData.selling_price))}%
+                    </p>
+                  </div>
+                )}
+                <Button onClick={handleSubmit} className="w-full" variant="hero">
+                  {editingProduct ? 'Update Product' : 'Add Product'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Search Bar */}
