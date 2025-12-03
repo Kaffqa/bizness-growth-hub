@@ -1,94 +1,135 @@
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Package, AlertTriangle, Clock, DollarSign } from 'lucide-react';
+import { 
+  Package, 
+  AlertTriangle, 
+  Coins, 
+  ArrowUpRight, 
+  CheckCircle2,
+  XCircle,
+  BarChart3
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useBusinessStore } from '@/stores/businessStore';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-
-const COLORS = ['hsl(222, 76%, 33%)', 'hsl(142, 76%, 36%)', 'hsl(38, 92%, 50%)', 'hsl(0, 84%, 60%)'];
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell 
+} from 'recharts';
 
 const Overview = () => {
   const { currentBusiness } = useBusinessStore();
 
   if (!currentBusiness) return null;
 
-  const transactions = currentBusiness.transactions || [];
   const products = currentBusiness.products || [];
 
-  const totalRevenue = transactions
-    .filter((t) => t.type === 'sale')
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+  // --- 1. LOGIC & CALCULATIONS (Menggunakan data dari Products.tsx) ---
+  
+  // A. Total Asset Value (Nilai Uang yang mengendap di Gudang)
+  // Rumus: Sum(HPP * Stock)
+  const totalAssetValue = products.reduce((sum, p) => {
+    // Pastikan konversi ke number aman
+    const hpp = Number(p.hpp) || 0; 
+    const stock = Number(p.stock) || 0;
+    return sum + (hpp * stock);
+  }, 0);
 
-  const totalExpenses = transactions
-    .filter((t) => t.type !== 'sale')
-    .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
+  // B. Estimasi Potensi Omzet (Jika semua barang terjual)
+  const potentialRevenue = products.reduce((sum, p) => {
+    const price = Number(p.selling_price) || 0;
+    const stock = Number(p.stock) || 0;
+    return sum + (price * stock);
+  }, 0);
 
-  const grossProfit = totalRevenue - totalExpenses;
+  // C. Status Stok
+  const lowStockThreshold = 10;
+  const outOfStockItems = products.filter((p) => Number(p.stock) === 0);
+  const lowStockItems = products.filter((p) => Number(p.stock) > 0 && Number(p.stock) < lowStockThreshold);
+  const goodStockItems = products.filter((p) => Number(p.stock) >= lowStockThreshold);
 
-  const lowStockItems = products.filter((p) => p.stock < 10);
+  // D. Stock Health Score (Persentase barang aman)
+  const stockHealth = products.length > 0 
+    ? Math.round((goodStockItems.length / products.length) * 100) 
+    : 0;
 
-  // Generate chart data from transactions
-  const chartData = [
-    { name: 'Week 1', revenue: 8500000 },
-    { name: 'Week 2', revenue: 12000000 },
-    { name: 'Week 3', revenue: 9800000 },
-    { name: 'Week 4', revenue: 15600000 },
-  ];
+  // --- 2. CHART DATA PREPARATION ---
 
-  // Category distribution for pie chart
+  // Data Bar Chart: Top 5 Kategori berdasarkan Nilai Aset
   const categoryMap = new Map<string, number>();
   products.forEach((p) => {
-    const current = categoryMap.get(p.category) || 0;
-    categoryMap.set(p.category, current + 1);
+    const val = (Number(p.hpp) || 0) * (Number(p.stock) || 0);
+    const currentVal = categoryMap.get(p.category) || 0;
+    categoryMap.set(p.category, currentVal + val);
   });
-  const categoryData = Array.from(categoryMap.entries()).map(([name, value]) => ({ name, value }));
+  
+  const barChartData = Array.from(categoryMap.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value) // Sort descending
+    .slice(0, 5); // Top 5 only
 
+  // Data Pie Chart: Komposisi Stok
+  const pieChartData = [
+    { name: 'Aman', value: goodStockItems.length, color: '#10b981' }, // Emerald
+    { name: 'Menipis', value: lowStockItems.length, color: '#f59e0b' }, // Amber
+    { name: 'Habis', value: outOfStockItems.length, color: '#ef4444' }, // Red
+  ].filter(d => d.value > 0);
+
+  // --- 3. WIDGET STATS ---
   const stats = [
     {
-      title: 'Monthly Revenue',
-      value: `Rp ${(totalRevenue / 1000000).toFixed(1)}M`,
-      change: '+12.5%',
-      trend: 'up',
-      icon: DollarSign,
-      color: 'text-primary',
-      bgColor: 'bg-primary/10',
+      title: 'Total Asset Value',
+      value: `Rp ${(totalAssetValue / 1000000).toFixed(1)}M`,
+      desc: 'Modal tertahan di stok',
+      icon: Coins,
+      color: 'text-blue-500',
+      bg: 'bg-blue-500/10',
     },
     {
-      title: 'Gross Profit',
-      value: `Rp ${(grossProfit / 1000000).toFixed(1)}M`,
-      change: '+8.2%',
-      trend: 'up',
-      icon: TrendingUp,
-      color: 'text-success',
-      bgColor: 'bg-success/10',
+      title: 'Potential Revenue',
+      value: `Rp ${(potentialRevenue / 1000000).toFixed(1)}M`,
+      desc: 'Estimasi nilai jual total',
+      icon: BarChart3,
+      color: 'text-purple-500',
+      bg: 'bg-purple-500/10',
     },
     {
-      title: 'Low Stock Alert',
-      value: lowStockItems.length,
-      change: lowStockItems.length > 0 ? 'Needs attention' : 'All good',
-      trend: lowStockItems.length > 0 ? 'down' : 'up',
+      title: 'Stock Health',
+      value: `${stockHealth}%`,
+      desc: 'Produk stok aman',
+      icon: CheckCircle2,
+      color: stockHealth > 70 ? 'text-emerald-500' : 'text-orange-500',
+      bg: stockHealth > 70 ? 'bg-emerald-500/10' : 'bg-orange-500/10',
+    },
+    {
+      title: 'Restock Needed',
+      value: lowStockItems.length + outOfStockItems.length,
+      desc: 'Barang perlu dibeli',
       icon: AlertTriangle,
-      color: lowStockItems.length > 0 ? 'text-warning' : 'text-success',
-      bgColor: lowStockItems.length > 0 ? 'bg-warning/10' : 'bg-success/10',
-    },
-    {
-      title: 'Total Products',
-      value: products.length,
-      change: 'Active items',
-      trend: 'up',
-      icon: Package,
-      color: 'text-primary',
-      bgColor: 'bg-primary/10',
+      color: (lowStockItems.length + outOfStockItems.length) > 0 ? 'text-red-500' : 'text-emerald-500',
+      bg: (lowStockItems.length + outOfStockItems.length) > 0 ? 'bg-red-500/10' : 'bg-emerald-500/10',
     },
   ];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold mb-1">Dashboard Overview</h1>
-        <p className="text-muted-foreground">Track your business performance at a glance.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">Inventory Overview</h1>
+          <p className="text-muted-foreground">Analisis aset dan kesehatan stok barang Anda.</p>
+        </div>
+        <div className="text-sm px-3 py-1 bg-secondary rounded-lg border border-border text-muted-foreground">
+           Total Item Terdaftar: <span className="font-bold text-foreground">{products.length} SKU</span>
+        </div>
       </div>
 
-      {/* Stats Grid */}
+      {/* 1. Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat, index) => (
           <motion.div
@@ -101,21 +142,12 @@ const Overview = () => {
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">{stat.title}</p>
-                    <p className="text-2xl font-bold">{stat.value}</p>
-                    <div className="flex items-center gap-1 text-xs">
-                      {stat.trend === 'up' ? (
-                        <TrendingUp className="w-3 h-3 text-success" />
-                      ) : (
-                        <TrendingDown className="w-3 h-3 text-destructive" />
-                      )}
-                      <span className={stat.trend === 'up' ? 'text-success' : 'text-destructive'}>
-                        {stat.change}
-                      </span>
-                    </div>
+                    <p className="text-sm text-muted-foreground font-medium">{stat.title}</p>
+                    <p className="text-2xl font-bold tracking-tight">{stat.value}</p>
+                    <p className="text-xs text-muted-foreground">{stat.desc}</p>
                   </div>
-                  <div className={`w-10 h-10 rounded-xl ${stat.bgColor} flex items-center justify-center`}>
-                    <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                  <div className={`w-12 h-12 rounded-2xl ${stat.bg} flex items-center justify-center`}>
+                    <stat.icon className={`w-6 h-6 ${stat.color}`} />
                   </div>
                 </div>
               </CardContent>
@@ -124,89 +156,114 @@ const Overview = () => {
         ))}
       </div>
 
-      {/* Charts */}
+      {/* 2. Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Main Chart: Asset Value Distribution */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           className="lg:col-span-2"
         >
-          <Card variant="glass">
+          <Card variant="glass" className="h-full">
             <CardHeader>
-              <CardTitle className="text-lg">Monthly Revenue</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Coins className="w-4 h-4 text-primary" />
+                Distribusi Nilai Aset per Kategori
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `${v / 1000000}M`} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                      }}
-                      formatter={(value: number) => [`Rp ${(value / 1000000).toFixed(1)}M`, 'Revenue']}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="revenue"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={3}
-                      dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+              <div className="h-[300px] w-full">
+                {barChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={barChartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                      <XAxis type="number" hide />
+                      <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        width={80}
+                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'hsl(var(--secondary))', opacity: 0.4 }}
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--card))',
+                          borderColor: 'hsl(var(--border))',
+                          borderRadius: '8px',
+                        }}
+                        formatter={(value: number) => [`Rp ${value.toLocaleString()}`, 'Total Aset']}
+                      />
+                      <Bar 
+                        dataKey="value" 
+                        fill="hsl(var(--primary))" 
+                        radius={[0, 4, 4, 0]} 
+                        barSize={32}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                    Belum ada data produk.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
         </motion.div>
 
+        {/* Secondary Chart: Stock Status */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
         >
-          <Card variant="glass">
+          <Card variant="glass" className="h-full">
             <CardHeader>
-              <CardTitle className="text-lg">Product Categories</CardTitle>
+              <CardTitle className="text-lg">Kesehatan Stok</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={categoryData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {categoryData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {categoryData.map((cat, i) => (
-                  <div key={cat.name} className="flex items-center gap-2 text-xs">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                    <span>{cat.name}</span>
+              <div className="h-[200px] w-full">
+                {pieChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                        stroke="none"
+                      >
+                        {pieChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                         contentStyle={{ borderRadius: '8px', borderColor: 'hsl(var(--border))', backgroundColor: 'hsl(var(--card))' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                    No data
                   </div>
+                )}
+              </div>
+              <div className="space-y-3 mt-4">
+                {pieChartData.map((item) => (
+                    <div key={item.name} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                            <span className="text-muted-foreground">{item.name}</span>
+                        </div>
+                        <span className="font-semibold">{item.value} Item</span>
+                    </div>
                 ))}
               </div>
             </CardContent>
@@ -214,7 +271,7 @@ const Overview = () => {
         </motion.div>
       </div>
 
-      {/* Recent Activity */}
+      {/* 3. Restock Priority List */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -222,36 +279,54 @@ const Overview = () => {
       >
         <Card variant="glass">
           <CardHeader>
-            <CardTitle className="text-lg">Recent Activity</CardTitle>
+            <CardTitle className="text-lg flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-orange-500" />
+                    Prioritas Belanja (Restock)
+                </div>
+                { (lowStockItems.length + outOfStockItems.length) > 0 && (
+                    <span className="text-xs font-medium bg-red-500/10 text-red-500 px-2 py-1 rounded-full animate-pulse">
+                        Urgent Action Needed
+                    </span>
+                )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {transactions.slice(0, 5).map((transaction) => (
-                <div key={transaction.id} className="flex items-center gap-4 p-3 rounded-lg bg-secondary/50">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                    transaction.type === 'sale' ? 'bg-success/10' : 'bg-destructive/10'
-                  }`}>
-                    {transaction.type === 'sale' ? (
-                      <TrendingUp className="w-5 h-5 text-success" />
-                    ) : (
-                      <TrendingDown className="w-5 h-5 text-destructive" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{transaction.description}</p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Clock className="w-3 h-3" />
-                      {transaction.date}
+            {lowStockItems.length === 0 && outOfStockItems.length === 0 ? (
+                <div className="text-center py-8">
+                    <div className="w-12 h-12 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <CheckCircle2 className="w-6 h-6 text-emerald-500" />
                     </div>
-                  </div>
-                  <p className={`font-semibold ${
-                    transaction.type === 'sale' ? 'text-success' : 'text-destructive'
-                  }`}>
-                    {transaction.type === 'sale' ? '+' : ''}Rp {Math.abs(transaction.amount).toLocaleString()}
-                  </p>
+                    <p className="text-muted-foreground font-medium">Semua stok aman!</p>
+                    <p className="text-xs text-muted-foreground">Tidak ada barang yang perlu dibeli saat ini.</p>
                 </div>
-              ))}
-            </div>
+            ) : (
+                <div className="space-y-3">
+                {[...outOfStockItems, ...lowStockItems].slice(0, 5).map((product) => (
+                    <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 hover:bg-secondary/40 transition-colors">
+                        <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                Number(product.stock) === 0 ? 'bg-red-500/10 text-red-500' : 'bg-orange-500/10 text-orange-500'
+                            }`}>
+                                {Number(product.stock) === 0 ? <XCircle className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
+                            </div>
+                            <div>
+                                <p className="font-semibold text-sm">{product.name}</p>
+                                <p className="text-xs text-muted-foreground">{product.category}</p>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <p className={`font-bold text-sm ${Number(product.stock) === 0 ? 'text-red-500' : 'text-orange-500'}`}>
+                                {Number(product.stock) === 0 ? 'Habis' : `Sisa: ${product.stock}`}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                HPP: Rp {Number(product.hpp).toLocaleString()}
+                            </p>
+                        </div>
+                    </div>
+                ))}
+                </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>

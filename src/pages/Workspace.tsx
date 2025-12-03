@@ -13,6 +13,9 @@ import {
   Bell,
   Menu,
   X,
+  ListTodo,
+  Archive,
+  ScanText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useBusinessStore } from '@/stores/businessStore';
@@ -25,9 +28,12 @@ const navItems = [
   { icon: LayoutDashboard, label: 'Overview', path: '' },
   { icon: Package, label: 'Products', path: 'products' },
   { icon: Calculator, label: 'HPP Calculator', path: 'calculator' },
-  { icon: FolderOpen, label: 'Files', path: 'files' },
+  //{ icon: FolderOpen, label: 'Files', path: 'files' },
+  { icon: ScanText, label: 'OCR Scanner', path: 'ocr' },
   { icon: Bot, label: 'AI Tools', path: 'ai' },
-  { icon: BarChart3, label: 'Reports', path: 'reports' },
+  //{ icon: BarChart3, label: 'Reports', path: 'reports' },
+  { icon: ListTodo, label: 'To Do List', path: 'todo' },
+  { icon: Archive, label: 'Stock', path: 'stock' },
 ];
 
 const Workspace = () => {

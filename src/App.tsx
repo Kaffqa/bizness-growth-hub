@@ -21,6 +21,9 @@ import Calculator from "./pages/workspace/Calculator";
 import Files from "./pages/workspace/Files";
 import AITools from "./pages/workspace/AITools";
 import Reports from "./pages/workspace/Reports";
+import ToDoList from "./pages/workspace/Todolist";
+import Stock from "./pages/workspace/Stock";
+import OCRPage from "./pages/workspace/OCR";
 
 const queryClient = new QueryClient();
 
@@ -94,6 +97,10 @@ const App = () => (
               <Route path="files" element={<Files />} />
               <Route path="ai" element={<AITools />} />
               <Route path="reports" element={<Reports />} />
+              <Route path="todo" element={<ToDoList />} />
+              <Route path="stock" element={<Stock />} />
+              <Route path="ocr" element={<OCRPage />} />
+          
             </Route>
             
             {/* Admin Route */}
