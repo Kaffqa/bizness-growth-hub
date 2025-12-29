@@ -20,10 +20,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 
-// --- KONFIGURASI API ---
-// Ganti URL ini dengan URL NGROK Anda jika backend berjalan di Google Colab/Jupyter
-// Contoh: "https://xxxx-xx-xx-xx-xx.ngrok-free.app"
-const API_BASE_URL = "https://9c7703a72520.ngrok-free.app"; 
+// API Configuration - should be moved to environment variable in production
+const API_BASE_URL = import.meta.env.VITE_AI_API_URL || "https://9c7703a72520.ngrok-free.app";
 
 // --- Types ---
 interface Message {

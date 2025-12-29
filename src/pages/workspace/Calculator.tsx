@@ -20,8 +20,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Slider } from "@/components/ui/slider";
 import { toast } from "@/hooks/use-toast";
 
-// --- KONFIGURASI API ---
-const API_BASE_URL = "https://9c7703a72520.ngrok-free.app"; 
+// API Configuration - should be moved to environment variable in production
+const API_BASE_URL = import.meta.env.VITE_AI_API_URL || "https://9c7703a72520.ngrok-free.app";
+
+import { safeParseNumber } from '@/lib/validations';
 
 // Utility Functions
 const formatRp = (value: number) => {
@@ -29,9 +31,9 @@ const formatRp = (value: number) => {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 };
 
+// Use validated safeNumber with bounds checking
 const safeNumber = (v: string | number) => {
-  const n = typeof v === 'string' ? parseFloat(v) : v;
-  return Number.isFinite(n) ? n : 0;
+  return safeParseNumber(v, { max: 999999999999 });
 };
 
 const CalculatorPage = () => {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Search, Edit2, Trash2, AlertTriangle, Download } from 'lucide-react'; // Tambahkan icon Download
+import { Plus, Search, Edit2, Trash2, AlertTriangle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useBusinessStore, Product } from '@/stores/businessStore';
 import { toast } from '@/hooks/use-toast';
+import { validateProductForm } from '@/lib/validations';
 
 const Products = () => {
   const { currentBusiness, addProduct, updateProduct, deleteProduct } = useBusinessStore();
@@ -51,17 +52,27 @@ const Products = () => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.category || !formData.hpp || !formData.selling_price || !formData.stock) {
-      toast({ title: 'Error', description: 'Please fill in all fields.', variant: 'destructive' });
+    // Validate using zod schema
+    const validation = validateProductForm(formData);
+    
+    if (!validation.success) {
+      const firstError = validation.error.errors[0];
+      toast({ 
+        title: 'Validation Error', 
+        description: firstError.message, 
+        variant: 'destructive' 
+      });
       return;
     }
 
+    const validatedData = validation.data;
+    
     const productData = {
-      name: formData.name,
-      category: formData.category,
-      hpp: parseFloat(formData.hpp),
-      selling_price: parseFloat(formData.selling_price),
-      stock: parseInt(formData.stock),
+      name: validatedData.name,
+      category: validatedData.category,
+      hpp: validatedData.hpp,
+      selling_price: validatedData.selling_price,
+      stock: validatedData.stock,
       business_id: currentBusiness.id,
     };
 

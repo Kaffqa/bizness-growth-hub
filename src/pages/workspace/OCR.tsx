@@ -15,63 +15,66 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { validateOCRData, safeParseNumber, type OCRData } from '@/lib/validations';
 
-// --- KONFIGURASI API ---
-const API_BASE_URL = "https://9c7703a72520.ngrok-free.app"; 
+// API Configuration - should be moved to environment variable in production
+const API_BASE_URL = import.meta.env.VITE_AI_API_URL || "https://9c7703a72520.ngrok-free.app";
 
-// --- Types ---
-interface OCRItem {
-  name: string;
-  price: number;
-}
-
-interface OCRData {
-  id: string;
-  date: string;
-  vendor: string;
-  items: OCRItem[];
-  total: number;
-}
-
-// --- Helper: Parse Text from AI to Object ---
+// --- Helper: Parse Text from AI to Object with validation ---
 const parseOCRText = (text: string): OCRData => {
-  const lines = text.split('\n');
-  const data: any = { items: [], total: 0 };
+  // Limit input text length to prevent processing extremely large responses
+  const sanitizedText = text.slice(0, 10000);
+  const lines = sanitizedText.split('\n');
   
-  let currentItem: any = {};
+  const data: {
+    vendor?: string;
+    date?: string;
+    total: number;
+    items: Array<{ name: string; price: number }>;
+  } = { items: [], total: 0 };
+  
+  let currentItem: { name?: string; price?: number } = {};
 
   lines.forEach(line => {
     const [key, ...rest] = line.split(':');
     const value = rest.join(':').trim();
 
     if (!key || !value) return;
-
+    
+    // Limit field lengths to prevent injection
+    const sanitizedValue = value.slice(0, 255);
     const lowerKey = key.trim().toLowerCase();
 
-    if (lowerKey.includes('toko') || lowerKey.includes('vendor')) data.vendor = value;
-    else if (lowerKey.includes('tanggal')) data.date = value;
-    else if (lowerKey.includes('total_bayar')) data.total = parseInt(value.replace(/\D/g, '')) || 0;
-    else if (lowerKey.includes('nama')) currentItem.name = value;
-    else if (lowerKey.includes('harga_satuan') || lowerKey.includes('total')) {
-        // Jika nemu harga, berarti item selesai atau update harga
-        if (lowerKey.includes('total') && !lowerKey.includes('bayar')) {
-             currentItem.price = parseInt(value.replace(/\D/g, '')) || 0;
-             if(currentItem.name) {
-                 data.items.push({...currentItem});
-                 currentItem = {}; // Reset for next item
-             }
+    if (lowerKey.includes('toko') || lowerKey.includes('vendor')) {
+      data.vendor = sanitizedValue;
+    } else if (lowerKey.includes('tanggal')) {
+      data.date = sanitizedValue.slice(0, 50);
+    } else if (lowerKey.includes('total_bayar')) {
+      data.total = safeParseNumber(value.replace(/\D/g, ''), { max: 999999999999 });
+    } else if (lowerKey.includes('nama')) {
+      currentItem.name = sanitizedValue;
+    } else if (lowerKey.includes('harga_satuan') || lowerKey.includes('total')) {
+      if (lowerKey.includes('total') && !lowerKey.includes('bayar')) {
+        currentItem.price = safeParseNumber(value.replace(/\D/g, ''), { max: 999999999999 });
+        if (currentItem.name && currentItem.price !== undefined) {
+          data.items.push({ 
+            name: currentItem.name, 
+            price: currentItem.price 
+          });
+          currentItem = {};
         }
+      }
     }
   });
 
-  // Fallback values if parsing fails
-  return {
+  // Validate and return using zod schema
+  return validateOCRData({
     id: Date.now().toString(),
     date: data.date || new Date().toISOString().split('T')[0],
-    vendor: data.vendor || "Unknown Vendor",
-    items: data.items.length > 0 ? data.items : [],
-    total: data.total || 0
-  };
+    vendor: data.vendor || 'Unknown Vendor',
+    items: data.items,
+    total: data.total,
+  });
 };
 
 
