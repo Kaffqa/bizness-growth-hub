@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -6,37 +6,89 @@ import {
   Building2,
   TrendingUp,
   LogOut,
-  MoreVertical,
-  Ban,
-  Bell,
   Search,
   Shield,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { useAuthStore } from '@/stores/authStore';
-import { useBusinessStore } from '@/stores/businessStore';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
-// Mock users for admin view
-const mockUsers = [
-  { id: '1', name: 'Sarah Johnson', email: 'sarah@bizness.com', joinDate: '2024-03-20', status: 'active', businesses: 2 },
-  { id: '2', name: 'Michael Chen', email: 'michael@bizness.com', joinDate: '2024-02-15', status: 'active', businesses: 3 },
-  { id: '3', name: 'Emma Wilson', email: 'emma@bizness.com', joinDate: '2024-01-10', status: 'active', businesses: 1 },
-  { id: '4', name: 'David Kim', email: 'david@bizness.com', joinDate: '2024-04-01', status: 'suspended', businesses: 0 },
-  { id: '5', name: 'Lisa Anderson', email: 'lisa@bizness.com', joinDate: '2024-03-05', status: 'active', businesses: 4 },
-];
+// Types for real user data from database
+interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+  avatar: string | null;
+}
+
+interface UserWithBusinessCount extends UserProfile {
+  businessCount: number;
+}
 
 const Admin = () => {
   const navigate = useNavigate();
   const { profile, logout } = useAuthStore();
-  const { businesses } = useBusinessStore();
   const [searchQuery, setSearchQuery] = useState('');
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState<UserWithBusinessCount[]>([]);
+  const [totalBusinesses, setTotalBusinesses] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch real user data from database
+  useEffect(() => {
+    const fetchAdminData = async () => {
+      setIsLoading(true);
+      try {
+        // Fetch all profiles (admin can see all via RLS policy)
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (profilesError) throw profilesError;
+
+        // Fetch all businesses to count per user
+        const { data: businesses, error: businessesError } = await supabase
+          .from('businesses')
+          .select('id, owner_id');
+
+        if (businessesError) throw businessesError;
+
+        // Count businesses per user
+        const businessCountMap = new Map<string, number>();
+        businesses?.forEach((business) => {
+          const count = businessCountMap.get(business.owner_id) || 0;
+          businessCountMap.set(business.owner_id, count + 1);
+        });
+
+        // Combine profiles with business counts
+        const usersWithCounts: UserWithBusinessCount[] = (profiles || []).map((profile) => ({
+          ...profile,
+          businessCount: businessCountMap.get(profile.id) || 0,
+        }));
+
+        setUsers(usersWithCounts);
+        setTotalBusinesses(businesses?.length || 0);
+      } catch (error) {
+        console.error('Error fetching admin data:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load admin data. You may not have admin permissions.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAdminData();
+  }, []);
 
   const filteredUsers = users.filter(
     (u) =>
@@ -49,23 +101,24 @@ const Admin = () => {
     navigate('/');
   };
 
-  const handleSuspendUser = (userId: string) => {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === userId
-          ? { ...u, status: u.status === 'active' ? 'suspended' : 'active' }
-          : u
-      )
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <span className="text-muted-foreground">Loading admin data...</span>
+        </div>
+      </div>
     );
-    toast({ title: 'User Updated', description: 'User status has been changed.' });
-  };
-
-  const handleSendNotification = (userId: string) => {
-    toast({ title: 'Notification Sent', description: 'User has been notified.' });
-  };
-
-  const totalActiveUsers = users.filter((u) => u.status === 'active').length;
-  const totalBusinesses = businesses.length;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -120,7 +173,7 @@ const Admin = () => {
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Total Users</p>
                     <p className="text-3xl font-bold">{users.length}</p>
-                    <p className="text-xs text-success mt-1">+12% this month</p>
+                    <p className="text-xs text-muted-foreground mt-1">Registered accounts</p>
                   </div>
                   <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
                     <Users className="w-6 h-6 text-primary" />
@@ -139,9 +192,15 @@ const Admin = () => {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground mb-1">Active Users</p>
-                    <p className="text-3xl font-bold">{totalActiveUsers}</p>
-                    <p className="text-xs text-success mt-1">{((totalActiveUsers / users.length) * 100).toFixed(0)}% active</p>
+                    <p className="text-sm text-muted-foreground mb-1">Users with Businesses</p>
+                    <p className="text-3xl font-bold">
+                      {users.filter((u) => u.businessCount > 0).length}
+                    </p>
+                    <p className="text-xs text-success mt-1">
+                      {users.length > 0 
+                        ? `${((users.filter((u) => u.businessCount > 0).length / users.length) * 100).toFixed(0)}% active`
+                        : '0% active'}
+                    </p>
                   </div>
                   <div className="w-12 h-12 rounded-xl bg-success/10 flex items-center justify-center">
                     <TrendingUp className="w-6 h-6 text-success" />
@@ -184,7 +243,7 @@ const Admin = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <CardTitle>User Management</CardTitle>
-                  <CardDescription>View and manage all registered users</CardDescription>
+                  <CardDescription>View all registered users (read-only)</CardDescription>
                 </div>
                 <div className="relative w-full sm:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -206,53 +265,39 @@ const Admin = () => {
                       <TableHead>Join Date</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Businesses</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredUsers.map((u) => (
-                      <TableRow key={u.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.email}`}
-                              alt={u.name}
-                              className="w-10 h-10 rounded-full"
-                            />
-                            <div>
-                              <p className="font-medium">{u.name}</p>
-                              <p className="text-sm text-muted-foreground">{u.email}</p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{u.joinDate}</TableCell>
-                        <TableCell>
-                          <Badge variant={u.status === 'active' ? 'default' : 'destructive'}>
-                            {u.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">{u.businesses}</TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleSuspendUser(u.id)}>
-                                <Ban className="w-4 h-4 mr-2" />
-                                {u.status === 'active' ? 'Suspend User' : 'Activate User'}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleSendNotification(u.id)}>
-                                <Bell className="w-4 h-4 mr-2" />
-                                Send Notification
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                    {filteredUsers.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          {searchQuery ? 'No users found matching your search.' : 'No users registered yet.'}
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      filteredUsers.map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.email}`}
+                                alt={u.name}
+                                className="w-10 h-10 rounded-full"
+                              />
+                              <div>
+                                <p className="font-medium">{u.name}</p>
+                                <p className="text-sm text-muted-foreground">{u.email}</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>{formatDate(u.created_at)}</TableCell>
+                          <TableCell>
+                            <Badge variant="default">active</Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">{u.businessCount}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>
