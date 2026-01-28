@@ -16,9 +16,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { validateOCRData, safeParseNumber, type OCRData } from '@/lib/validations';
-
-// API Configuration - should be moved to environment variable in production
-const API_BASE_URL = import.meta.env.VITE_AI_API_URL || "https://9c7703a72520.ngrok-free.app";
+import { supabase } from '@/integrations/supabase/client';
 
 // --- Helper: Parse Text from AI to Object with validation ---
 const parseOCRText = (text: string): OCRData => {
@@ -133,17 +131,13 @@ const OCRPage = () => {
         const formData = new FormData();
         formData.append("file", selectedFile);
 
-        const response = await fetch(`${API_BASE_URL}/ocr`, {
-            method: "POST",
-            headers: {
-                "ngrok-skip-browser-warning": "true",
-            },
+        // Call Edge Function instead of direct API
+        const { data, error } = await supabase.functions.invoke('ai-ocr', {
             body: formData,
         });
 
-        if (!response.ok) throw new Error("Gagal memproses gambar");
+        if (error) throw new Error(error.message);
 
-        const data = await response.json();
         const parsedData = parseOCRText(data.result);
         
         setCurrentResult(parsedData);

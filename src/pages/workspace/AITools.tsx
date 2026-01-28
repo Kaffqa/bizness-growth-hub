@@ -19,9 +19,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
-
-// API Configuration - should be moved to environment variable in production
-const API_BASE_URL = import.meta.env.VITE_AI_API_URL || "https://9c7703a72520.ngrok-free.app";
+import { supabase } from '@/integrations/supabase/client';
 
 // --- Types ---
 interface Message {
@@ -69,7 +67,7 @@ const ChatBot = () => {
 
   // --- Handlers ---
 
-  // 1. Send Message (INTEGRATED WITH BACKEND)
+  // 1. Send Message (INTEGRATED WITH EDGE FUNCTION)
   const handleSendMessage = async (text: string = inputValue) => {
     if (!text.trim()) return;
 
@@ -86,21 +84,14 @@ const ChatBot = () => {
     setIsTyping(true);
 
     try {
-      // B. Call Backend API
-      const response = await fetch(`${API_BASE_URL}/chatbot`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true", // Header penting jika pakai ngrok
-        },
-        body: JSON.stringify({ message: text }),
+      // B. Call Edge Function
+      const { data, error } = await supabase.functions.invoke('ai-chatbot', {
+        body: { message: text },
       });
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
+      if (error) {
+        throw new Error(error.message);
       }
-
-      const data = await response.json();
       
       // C. Add AI Response UI
       const aiMsg: Message = {

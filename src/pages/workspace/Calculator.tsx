@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { jsPDF } from "jspdf"; // Import jsPDF
+import { jsPDF } from "jspdf";
 import { 
   Calculator, 
   Sparkles, 
@@ -19,10 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "@/hooks/use-toast";
-
-// API Configuration - should be moved to environment variable in production
-const API_BASE_URL = import.meta.env.VITE_AI_API_URL || "https://9c7703a72520.ngrok-free.app";
-
+import { supabase } from '@/integrations/supabase/client';
 import { safeParseNumber } from '@/lib/validations';
 
 // Utility Functions
@@ -125,20 +122,15 @@ deskripsi tambahan = ${additionalNotes}
     `.trim();
 
     try {
-      const response = await fetch(`${API_BASE_URL}/hpp`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true", 
-        },
-        body: JSON.stringify({ user_input: promptInput }),
+      // Call Edge Function instead of direct API
+      const { data, error } = await supabase.functions.invoke('ai-calculator', {
+        body: { user_input: promptInput },
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (error) {
+        throw new Error(error.message);
       }
 
-      const data = await response.json();
       setAiAnalysis(data.result);
       setShowResult(true);
       toast({ title: "Success", description: "Analisis AI berhasil diterima." });
