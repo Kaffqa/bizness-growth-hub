@@ -1,1 +1,10 @@
 project_id = "umhagotqealglxbptpgh"
+
+[functions.ai-chatbot]
+verify_jwt = false
+
+[functions.ai-calculator]
+verify_jwt = false
+
+[functions.ai-ocr]
+verify_jwt = false
